@@ -2,20 +2,30 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
+const { Command } = require('commander');
+const program = new Command();
 
 const app = express();
-const storagePath = './notes'; // Директорія для збереження нотаток
-
-// Middleware для роботи з JSON
-app.use(express.json());
-
-// Налаштування multer для роботи з формами
 const upload = multer();
+app.use(express.json()); // Для роботи з JSON тілами запитів
 
-// Переконайтесь, що директорія для збереження нотаток існує
+// Конфігурація командного рядка
+program
+  .requiredOption('-h, --host <type>', 'server host')
+  .requiredOption('-p, --port <type>', 'server port')
+  .requiredOption('-c, --cache <path>', 'cache directory')
+  .parse(process.argv);
+
+const options = program.opts();
+
+// Перевірка наявності обов'язкових параметрів
+const { host, port, cache: storagePath } = options;
+
 if (!fs.existsSync(storagePath)) {
-  fs.mkdirSync(storagePath);
+  fs.mkdirSync(storagePath, { recursive: true });
 }
+
+console.log(`Host: ${host}, Port: ${port}, Cache Directory: ${storagePath}`);
 
 // 1. GET /notes/<ім’я нотатки>
 app.get('/notes/:noteName', (req, res) => {
@@ -39,7 +49,12 @@ app.put('/notes/:noteName', (req, res) => {
     return res.status(404).send('Note not found');
   }
 
-  fs.writeFileSync(notePath, req.body.text);
+  const { text } = req.body;
+  if (!text) {
+    return res.status(400).send('No text provided');
+  }
+
+  fs.writeFileSync(notePath, text);
   res.send('Note updated successfully');
 });
 
@@ -69,6 +84,11 @@ app.get('/notes', (req, res) => {
 // 5. POST /write
 app.post('/write', upload.none(), (req, res) => {
   const { note_name: noteName, note: noteText } = req.body;
+
+  if (!noteName || !noteText) {
+    return res.status(400).send('Invalid request: missing note name or text');
+  }
+
   const notePath = path.join(storagePath, noteName);
 
   if (fs.existsSync(notePath)) {
@@ -99,7 +119,6 @@ app.get('/UploadForm.html', (req, res) => {
 });
 
 // Запуск сервера
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+app.listen(port, host, () => {
+  console.log(`Server is running on http://${host}:${port}`);
 });
